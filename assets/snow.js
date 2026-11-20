@@ -128,22 +128,39 @@
 		}
 		for (var i = 0; i < count; i++) { items.push(make(false)); }
 
-		var running = true;
+		// One animation loop only. Before 1.0.1 every hide/show of the tab started
+		// an extra loop, so the effect got faster each time the tab came back.
+		var rafId = 0;
+		var last = 0;
+		function loop() {
+			if (!rafId && !document.hidden) {
+				last = 0;
+				rafId = requestAnimationFrame(frame);
+			}
+		}
 		document.addEventListener('visibilitychange', function () {
-			running = !document.hidden;
-			if (running) { requestAnimationFrame(frame); }
+			if (document.hidden) {
+				if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+			} else {
+				loop();
+			}
 		});
 
-		function frame() {
-			if (!running) { return; }
+		function frame(now) {
+			rafId = 0;
+			if (document.hidden) { return; }
+			// Time-based motion: same speed on 60 Hz and 120 Hz screens, and no jump
+			// after a pause (step is capped).
+			var k = last ? Math.min((now - last) / 16.667, 3) : 1;
+			last = now;
 			ctx.clearRect(0, 0, W, H);
 			ctx.globalAlpha = cfg.opacity;
 			for (var i = 0; i < items.length; i++) {
 				var p = items[i];
-				p.y += p.vy;
-				p.sway += p.swaySpeed;
-				p.x += Math.sin(p.sway) * 0.6;
-				p.rot += p.vr;
+				p.y += p.vy * k;
+				p.sway += p.swaySpeed * k;
+				p.x += Math.sin(p.sway) * 0.6 * k;
+				p.rot += p.vr * k;
 				if (p.y > H + 40) { items[i] = make(true); continue; }
 				ctx.save();
 				ctx.translate(p.x, p.y);
@@ -165,9 +182,9 @@
 				}
 				ctx.restore();
 			}
-			requestAnimationFrame(frame);
+			rafId = requestAnimationFrame(frame);
 		}
-		requestAnimationFrame(frame);
+		loop();
 	}
 
 	function boot() {
